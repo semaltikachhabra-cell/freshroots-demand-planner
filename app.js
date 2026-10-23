@@ -132,7 +132,7 @@
       <p class="note">The uplift is applied to average weekly demand before the cover checks. The 20% trend test uses actual sales, which already contain any festival lift.</p>`;
   }
 
-  function render() { renderMeta(); renderKpis(); renderFilters(); renderTable(); renderPO(); renderRules(); }
+  function render() { renderUploads(); renderMeta(); renderKpis(); renderFilters(); renderTable(); renderPO(); renderRules(); }
 
   function exportCSV() {
     const lines = [['Distributor', 'SKU_ID', 'SKU_Name', 'Order_Qty', 'Basis', 'Status']];
@@ -146,12 +146,63 @@
     URL.revokeObjectURL(a.href);
   }
 
+  // ---- uploads ----
+  const KINDS = {
+    sales: ['SKU_ID', 'Week', 'Units_Sold'],
+    inventory: ['SKU_ID', 'Units_On_Hand', 'As_Of_Date'],
+    skus: ['SKU_ID', 'SKU_Name', 'Perishability', 'Standard_Reorder_Qty', 'Distributor_ID'],
+    calendar: ['Year_Month', 'Is_Festival_Month'],
+    distributors: ['Distributor_ID', 'Distributor_Name'],
+  };
+  const KIND_LABEL = { sales: 'Weekly sales', inventory: 'Current inventory', skus: 'SKU master', calendar: 'Calendar', distributors: 'Distributor master' };
+  const uploaded = {};
+
+  function detect(text) {
+    const head = (text.split(/\r?\n/)[0] || '').split(',').map((h) => h.trim().replace(/^"|"$/g, ''));
+    return Object.keys(KINDS).find((k) => KINDS[k].every((c) => head.includes(c)));
+  }
+
+  async function ingest(files) {
+    const msgs = [];
+    const next = { ...csv };
+    const names = {};
+    for (const f of files) {
+      const text = await f.text();
+      const kind = detect(text);
+      if (!kind) { msgs.push(`${f.name}: not recognised. Check the column headers match the seed files.`); continue; }
+      next[kind] = text; names[kind] = f.name;
+    }
+    const kinds = Object.keys(names);
+    if (kinds.length) {
+      try {
+        E.analyse({ skus: E.parseCSV(next.skus), sales: E.parseCSV(next.sales), inventory: E.parseCSV(next.inventory), calendar: E.parseCSV(next.calendar), distributors: E.parseCSV(next.distributors) }, cfg);
+        csv = next; Object.assign(uploaded, names);
+        store.set('fr-csv', Object.fromEntries(Object.keys(csv).filter((k) => csv[k] !== window.SEED_CSV[k]).map((k) => [k, csv[k]])));
+        store.set('fr-names', uploaded);
+        msgs.unshift(`Loaded ${kinds.map((k) => KIND_LABEL[k]).join(', ')}. Recommendations updated.`);
+        run();
+      } catch (e) { msgs.unshift('Those files could not be used together, nothing was changed: ' + (e.message || 'unreadable data')); }
+    }
+    renderUploads(msgs, !kinds.length || msgs[0].startsWith('Those'));
+  }
+
+  function renderUploads(msgs, isErr) {
+    const names = { ...store.get('fr-names', {}), ...uploaded };
+    $('#file-status').innerHTML = Object.keys(KINDS).map((k) => {
+      const n = E.parseCSV(csv[k]).length, up = csv[k] !== window.SEED_CSV[k];
+      return `<li><span>${KIND_LABEL[k]} <span class="src">· ${n} rows</span></span><span class="${up ? 'up' : 'src'}">${up ? esc(names[k] || 'uploaded file') : 'seed data'}</span></li>`;
+    }).join('');
+    const m = $('#upload-msg');
+    m.className = 'note' + (isErr ? ' err' : '');
+    m.innerHTML = (msgs || []).map(esc).join('<br>');
+  }
+
   document.addEventListener('click', (e) => {
     const t = e.target;
     if (t.dataset.f) { filter = t.dataset.f; renderFilters(); renderTable(); }
     else if (t.dataset.why) { open.has(t.dataset.why) ? open.delete(t.dataset.why) : open.add(t.dataset.why); renderTable(); }
     else if (t.id === 'export') exportCSV();
-    else if (t.id === 'reset-data') { csv = { ...window.SEED_CSV }; store.del('fr-csv'); run(); }
+    else if (t.id === 'reset-data') { csv = { ...window.SEED_CSV }; store.del('fr-csv'); store.del('fr-names'); Object.keys(uploaded).forEach((k) => delete uploaded[k]); run(); renderUploads(['Reset to seed data.']); }
     else if (t.id === 'reset-decisions') { decisions = {}; saveDec(); render(); }
   });
 
@@ -170,15 +221,15 @@
     } else if (t.dataset.fest !== undefined) {
       const { festival, ...rest } = cfg; cfg = t.value === 'auto' ? rest : { ...rest, festival: t.value === 'on' };
       store.set('fr-cfg', cfg); run();
-    } else if (t.type === 'file' && t.files[0]) {
-      const key = t.dataset.key;
-      t.files[0].text().then((text) => {
-        const old = csv[key]; csv[key] = text;
-        try { E.analyse(parse(), cfg); store.set('fr-csv', Object.fromEntries(Object.keys(csv).filter((k) => csv[k] !== window.SEED_CSV[k]).map((k) => [k, csv[k]]))); run(); }
-        catch { csv[key] = old; alert('Could not read that file.'); }
-      });
+    } else if (t.id === 'files' && t.files.length) {
+      ingest([...t.files]); t.value = '';
     }
   });
+
+  const drop = $('#drop');
+  ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', (e) => ingest([...e.dataTransfer.files]));
 
   run();
 })();

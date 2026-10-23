@@ -18,6 +18,20 @@
 <main>
   <section class="kpis" id="kpis"></section>
 
+  <section class="card" id="upload-card">
+    <div class="card-head">
+      <h2>Data files</h2>
+      <button id="reset-data" class="btn ghost">Reset to seed data</button>
+    </div>
+    <label class="drop" id="drop" for="files">
+      <b>Upload new CSV files</b>
+      <span>Drop them here or click to choose. Select several at once; each file is recognised by its columns.</span>
+      <input id="files" type="file" accept=".csv,text/csv" multiple>
+    </label>
+    <ul class="files" id="file-status"></ul>
+    <div id="upload-msg" class="note" role="status" aria-live="polite"></div>
+  </section>
+
   <section class="card" id="queue-card">
     <div class="card-head">
       <h2>Recommendations</h2>
@@ -40,12 +54,8 @@
     <div class="grid">
       <div id="rules"></div>
       <div>
-        <h3>Refresh from a new SAP export</h3>
-        <p class="note">Replace any of the three files. Columns must match the seed files.</p>
-        <label class="file">Weekly sales <input type="file" accept=".csv" data-key="sales"></label>
-        <label class="file">Current inventory <input type="file" accept=".csv" data-key="inventory"></label>
-        <label class="file">SKU master <input type="file" accept=".csv" data-key="skus"></label>
-        <button id="reset-data" class="btn ghost">Reset to seed data</button>
+        <h3>Decisions</h3>
+        <p class="note">Raghav's approvals are saved in this browser for the current inventory date.</p>
         <button id="reset-decisions" class="btn ghost">Clear Raghav's decisions</button>
       </div>
     </div>
