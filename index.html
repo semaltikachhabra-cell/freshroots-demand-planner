@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Freshroots Demand Planner</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>Demand Planner</h1>
+    <p class="sub">Freshroots · applies Raghav's documented rules to the SAP export and drafts the reorder list. Raghav approves; nothing is ordered automatically.</p>
+  </div>
+  <div class="meta" id="meta"></div>
+</header>
+
+<main>
+  <section class="kpis" id="kpis"></section>
+
+  <section class="card" id="queue-card">
+    <div class="card-head">
+      <h2>Recommendations</h2>
+      <div class="filters" id="filters"></div>
+    </div>
+    <div class="table-wrap"><table id="table"></table></div>
+  </section>
+
+  <section class="card" id="po-card">
+    <div class="card-head">
+      <h2>Draft purchase orders</h2>
+      <button id="export" class="btn">Export CSV</button>
+    </div>
+    <p class="note">Draft only, grouped by distributor, built from the lines Raghav has approved. Enter them in Zoho Inventory. This tool never places an order.</p>
+    <div id="po"></div>
+  </section>
+
+  <details class="card" id="settings">
+    <summary><h2>Rules and data</h2></summary>
+    <div class="grid">
+      <div id="rules"></div>
+      <div>
+        <h3>Refresh from a new SAP export</h3>
+        <p class="note">Replace any of the three files. Columns must match the seed files.</p>
+        <label class="file">Weekly sales <input type="file" accept=".csv" data-key="sales"></label>
+        <label class="file">Current inventory <input type="file" accept=".csv" data-key="inventory"></label>
+        <label class="file">SKU master <input type="file" accept=".csv" data-key="skus"></label>
+        <button id="reset-data" class="btn ghost">Reset to seed data</button>
+        <button id="reset-decisions" class="btn ghost">Clear Raghav's decisions</button>
+      </div>
+    </div>
+  </details>
+</main>
+
+<script src="engine.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
