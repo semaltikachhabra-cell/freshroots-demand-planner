@@ -22,13 +22,43 @@
     calendar: E.parseCSV(csv.calendar), distributors: E.parseCSV(csv.distributors),
   });
 
+  let dbOk = null; // null = unknown, true = shared database reachable, false = browser-only
+
   function run() {
     result = E.analyse(parse(), cfg);
     decisions = store.get('fr-dec:' + result.asOf, {});
     render();
+    if (window.DB.on) {
+      const asOf = result.asOf;
+      window.DB.loadDecisions(asOf).then((rows) => {
+        if (asOf !== result.asOf) return;
+        decisions = Object.fromEntries(rows.map((d) => [d.sku_id, { status: d.status, qty: d.qty ?? undefined, by: d.decided_by }]));
+        saveDecLocal(); setDb(true); renderKpis(); renderTable(); renderPO();
+      }).catch(() => setDb(false));
+    }
   }
 
-  const saveDec = () => store.set('fr-dec:' + result.asOf, decisions);
+  const saveDecLocal = () => store.set('fr-dec:' + result.asOf, decisions);
+  const who = () => store.get('fr-name', '');
+
+  // Persist one SKU's decision to this browser and, when reachable, the shared database.
+  function persist(sku) {
+    saveDecLocal();
+    if (!window.DB.on) return;
+    const d = decisions[sku], row = result.rows.find((r) => r.sku === sku);
+    const p = d
+      ? window.DB.saveDecision({ as_of: result.asOf, sku_id: sku, status: d.status, qty: d.status === 'override' ? Number(d.qty) || 0 : d.status === 'approved' ? row.qty : null, recommended_qty: row.qty, action: row.action, decided_by: who() || null })
+      : window.DB.deleteDecision(result.asOf, sku);
+    p.then(() => { setDb(true); loadHistory(); }).catch(() => setDb(false));
+  }
+
+  function setDb(ok) {
+    dbOk = ok;
+    const el = $('#db-status');
+    if (!el) return;
+    el.className = 'dbs ' + (ok ? 'ok' : 'off');
+    el.textContent = !window.DB.on ? 'Browser-only mode' : ok ? 'Shared database connected' : 'Database unreachable: saving in this browser only';
+  }
 
   function spark(series) {
     if (series.length < 2) return '';
@@ -146,6 +176,24 @@
     URL.revokeObjectURL(a.href);
   }
 
+  function runRow(source) {
+    const c = (a) => result.rows.filter((r) => r.action === a).length;
+    return { as_of: result.asOf, festival: result.festival, source, config: result.config, summary: { reorder_now: c('REORDER_NOW'), reorder: c('REORDER'), pause: c('PAUSE'), review: c('REVIEW'), ok: c('OK'), approved_lines: result.rows.filter((r) => lineQty(r) > 0).length } };
+  }
+
+  const fmt = (t) => new Date(t).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+  const STATUS_TXT = { approved: 'approved', override: 'set own qty', rejected: 'rejected', cleared: 'cleared' };
+
+  function loadHistory() {
+    if (!window.DB.on) return;
+    Promise.all([window.DB.loadLog(), window.DB.loadRuns()]).then(([log, runs]) => {
+      setDb(true);
+      $('#history').innerHTML = `<div class="grid">
+        <div><h3>Decision audit trail</h3>${log.length ? `<ul class="hist">${log.map((l) => `<li><b>${esc(l.sku_id)}</b> ${STATUS_TXT[l.status] || esc(l.status)}${l.qty != null ? ` (${l.qty})` : ''} <span class="src">by ${esc(l.decided_by || 'unnamed')} · ${esc(fmt(l.logged_at))}</span></li>`).join('')}</ul>` : '<p class="empty">No decisions recorded yet.</p>'}</div>
+        <div><h3>Recent runs</h3>${runs.length ? `<ul class="hist">${runs.map((r) => `<li>${esc(r.source)} · as of ${esc(r.as_of)}: ${esc(r.summary.reorder_now)} reorder now, ${esc(r.summary.pause)} pause, ${esc(r.summary.approved_lines)} approved <span class="src">· ${esc(fmt(r.created_at))}</span></li>`).join('')}</ul>` : '<p class="empty">No runs recorded yet.</p>'}</div></div>`;
+    }).catch(() => setDb(false));
+  }
+
   // ---- uploads ----
   const KINDS = {
     sales: ['SKU_ID', 'Week', 'Units_Sold'],
@@ -181,6 +229,12 @@
         store.set('fr-names', uploaded);
         msgs.unshift(`Loaded ${kinds.map((k) => KIND_LABEL[k]).join(', ')}. Recommendations updated.`);
         run();
+        if (window.DB.on) {
+          Promise.all(kinds.map((k) => window.DB.saveDataset(k, names[k], csv[k])))
+            .then(() => window.DB.logRun(runRow('upload')))
+            .then(() => { setDb(true); loadHistory(); renderUploads(msgs.concat('Saved to the shared database.')); })
+            .catch(() => { setDb(false); renderUploads(msgs.concat('Could not reach the database: files kept in this browser only.'), true); });
+        }
       } catch (e) { msgs.unshift('Those files could not be used together, nothing was changed: ' + (e.message || 'unreadable data')); }
     }
     renderUploads(msgs, !kinds.length || msgs[0].startsWith('Those'));
@@ -201,9 +255,9 @@
     const t = e.target;
     if (t.dataset.f) { filter = t.dataset.f; renderFilters(); renderTable(); }
     else if (t.dataset.why) { open.has(t.dataset.why) ? open.delete(t.dataset.why) : open.add(t.dataset.why); renderTable(); }
-    else if (t.id === 'export') exportCSV();
-    else if (t.id === 'reset-data') { csv = { ...window.SEED_CSV }; store.del('fr-csv'); store.del('fr-names'); Object.keys(uploaded).forEach((k) => delete uploaded[k]); run(); renderUploads(['Reset to seed data.']); }
-    else if (t.id === 'reset-decisions') { decisions = {}; saveDec(); render(); }
+    else if (t.id === 'export') { exportCSV(); if (window.DB.on) window.DB.logRun(runRow('export')).then(loadHistory).catch(() => setDb(false)); }
+    else if (t.id === 'reset-data') { csv = { ...window.SEED_CSV }; store.del('fr-csv'); store.del('fr-names'); Object.keys(uploaded).forEach((k) => delete uploaded[k]); run(); renderUploads(['Reset to seed data.']); if (window.DB.on) window.DB.clearDatasets().then(() => window.DB.logRun(runRow('reset'))).then(loadHistory).catch(() => setDb(false)); }
+    else if (t.id === 'reset-decisions') { decisions = {}; saveDecLocal(); render(); if (window.DB.on) window.DB.clearDecisions(result.asOf).then(loadHistory).catch(() => setDb(false)); }
   });
 
   document.addEventListener('change', (e) => {
@@ -212,15 +266,16 @@
       const sku = t.dataset.dec, row = result.rows.find((r) => r.sku === sku);
       if (!t.value) delete decisions[sku];
       else decisions[sku] = { status: t.value, qty: t.value === 'override' ? row.qty : undefined };
-      saveDec(); renderKpis(); renderTable(); renderPO();
+      persist(sku); renderKpis(); renderTable(); renderPO();
     } else if (t.dataset.qty) {
       decisions[t.dataset.qty] = { status: 'override', qty: Math.max(0, Number(t.value) || 0) };
-      saveDec(); renderKpis(); renderPO();
+      persist(t.dataset.qty); renderKpis(); renderPO();
     } else if (t.dataset.cfg) {
       cfg = { ...cfg, [t.dataset.cfg]: Number(t.value) }; store.set('fr-cfg', cfg); run();
     } else if (t.dataset.fest !== undefined) {
       const { festival, ...rest } = cfg; cfg = t.value === 'auto' ? rest : { ...rest, festival: t.value === 'on' };
       store.set('fr-cfg', cfg); run();
+    } else if (t.id === 'who') { store.set('fr-name', t.value.trim());
     } else if (t.id === 'files' && t.files.length) {
       ingest([...t.files]); t.value = '';
     }
@@ -231,5 +286,17 @@
   ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
   drop.addEventListener('drop', (e) => ingest([...e.dataTransfer.files]));
 
-  run();
+  $('#who').value = who();
+  setDb(window.DB.on ? null : false);
+  if (window.DB.on) {
+    window.DB.loadDatasets().then((rows) => {
+      csv = { ...window.SEED_CSV };
+      const nm = {};
+      for (const r of rows) { csv[r.kind] = r.csv; nm[r.kind] = r.filename; }
+      Object.assign(uploaded, nm); store.set('fr-names', uploaded);
+      try { E.analyse({ skus: E.parseCSV(csv.skus), sales: E.parseCSV(csv.sales), inventory: E.parseCSV(csv.inventory), calendar: E.parseCSV(csv.calendar), distributors: E.parseCSV(csv.distributors) }, cfg); }
+      catch { csv = { ...window.SEED_CSV }; }
+      run(); loadHistory();
+    }).catch(() => { setDb(false); run(); });
+  } else run();
 })();

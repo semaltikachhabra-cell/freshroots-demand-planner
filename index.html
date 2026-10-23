@@ -12,7 +12,7 @@
     <h1>Demand Planner</h1>
     <p class="sub">Freshroots · applies Raghav's documented rules to the SAP export and drafts the reorder list. Raghav approves; nothing is ordered automatically.</p>
   </div>
-  <div class="meta" id="meta"></div>
+  <div class="meta"><div id="meta"></div><div id="db-status" class="dbs" role="status"></div><label class="who">Your name for the audit trail <input id="who" type="text" maxlength="40" placeholder="e.g. Raghav"></label></div>
 </header>
 
 <main>
@@ -49,6 +49,11 @@
     <div id="po"></div>
   </section>
 
+  <section class="card" id="history-card">
+    <div class="card-head"><h2>History</h2></div>
+    <div id="history"><p class="empty">Connect the database to see the audit trail.</p></div>
+  </section>
+
   <details class="card" id="settings">
     <summary><h2>Rules and data</h2></summary>
     <div class="grid">
@@ -64,6 +69,8 @@
 
 <script src="engine.js"></script>
 <script src="data.js"></script>
+<script src="config.js"></script>
+<script src="db.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

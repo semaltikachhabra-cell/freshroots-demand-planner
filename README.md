@@ -34,7 +34,16 @@ Deploy: static site, no build step. Push to GitHub and import into Vercel.
 ## Seed data results (as of 2026-10-19, festival month)
 Reorder now: SKU011 bread 500, SKU004 almond milk 150, SKU013 peanut butter 120, SKU001 mango drink 750 (1.5x), SKU003 brown rice 300. Pause: SKU006 quinoa (22 wks cover), SKU007 coconut water (4.1 wks, perishable max 4). Other 8 SKUs: no action.
 
+## Database (Supabase)
+Project `freshroots-demand-planner` (ap-south-1). Schema in `supabase/schema.sql`.
+- `datasets`: latest uploaded CSV per kind, loaded for everyone on page open.
+- `decisions`: Raghav's current decision per SKU per inventory date.
+- `decision_log`: append-only audit trail, written by a database trigger (the browser can only read it).
+- `runs`: one row per upload, reset or PO export.
+
+The browser talks to Supabase directly with the publishable key in `config.js` (safe to expose). There is no login, so anyone with the site URL can read and write datasets and decisions; the audit log is read-only. Add Supabase Auth before using this with real data. If the database is unreachable the app falls back to saving in the browser.
+
 ## Not built
 - Live SAP/Zoho connection (uses the CSV export the IT team confirmed is possible).
 - Detection of the 15-20% judgment cases (new launches, unusual distributor behaviour, one-off events). Raghav handles these through override.
-- A shared database: decisions are saved in the browser only.
+- Login and per-user permissions.

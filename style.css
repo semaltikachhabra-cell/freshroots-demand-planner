@@ -65,3 +65,7 @@ details summary{cursor:pointer;list-style:none}details summary::-webkit-details-
 .files li{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
 .files .src{color:var(--mute)}.files .up{color:var(--green);font-weight:600}
 .err{color:var(--red)!important}
+.dbs{font-size:12px;margin-top:4px;font-weight:600}.dbs.ok{color:var(--green)}.dbs.off{color:var(--amber)}
+.who{display:block;font-size:12px;margin-top:6px}.who input{width:150px;margin-left:4px}
+.hist{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px;font-size:13px}
+.hist li{border-bottom:1px solid var(--line);padding-bottom:6px}.hist .src{color:var(--mute);font-size:12px}
